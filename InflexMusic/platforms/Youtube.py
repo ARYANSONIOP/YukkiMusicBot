@@ -16,7 +16,7 @@ import random
 import logging
 import aiohttp
 import config
-from config import API_URL, VIDEO_API_URL, API_KEY
+from config import API_URL, API_KEY
 
 
 def cookie_txt_file():
@@ -30,130 +30,109 @@ def cookie_txt_file():
     return cookie_file
 
 
-async def download_song(link: str):
+# -------------------------
+# Download YouTube Audio
+# -------------------------
+async def download_song(link: str) -> str:
     video_id = link.split('v=')[-1].split('&')[0]
-
-    download_folder = "downloads"
-    for ext in ["mp3", "m4a", "webm"]:
-        file_path = f"{download_folder}/{video_id}.{ext}"
-        if os.path.exists(file_path):
-            #print(f"File already exists: {file_path}")
-            return file_path
-        
-    song_url = f"{API_URL}/song/{video_id}?api={API_KEY}"
-    async with aiohttp.ClientSession() as session:
-        for attempt in range(10):
-            try:
-                async with session.get(song_url) as response:
-                    if response.status != 200:
-                        raise Exception(f"API request failed with status code {response.status}")
-                
-                    data = await response.json()
-                    status = data.get("status", "").lower()
-
-                    if status == "done":
-                        download_url = data.get("link")
-                        if not download_url:
-                            raise Exception("API response did not provide a download URL.")
-                        break
-                    elif status == "downloading":
-                        await asyncio.sleep(4)
-                    else:
-                        error_msg = data.get("error") or data.get("message") or f"Unexpected status '{status}'"
-                        raise Exception(f"API error: {error_msg}")
-            except Exception as e:
-                print(f"[FAIL] {e}")
-                return None
-        else:
-            print("⏱️ Max retries reached. Still downloading...")
-            return None
+    print(f"🎵 [AUDIO] Starting download process for ID: {video_id}")
     
+    if not video_id or len(video_id) < 5:
+        return
+        
+    DOWNLOAD_DIR = "downloads"
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.webm")
+    if os.path.exists(file_path):
+        print(f"🎵 [LOCAL] downloaded from LOCAL for ID: {video_id}")
+        return file_path
+        
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {"url": video_id, "type": "audio"}
+            headers = {"X-API-KEY": API_KEY}
+            
+            async with session.post(f"{API_URL}/download", json=payload, headers=headers) as response:
+                if response.status == 401:
+                    print("[API] Your provided key is not valid, please use a valid one or get it from @InflexAPIBot")
+                    return
+                if response.status != 200:
+                    print(f"[AUDIO] API returned status {response.status} for ID: {video_id}")
+                    return
+                    
+                data = await response.json()
+                if data.get("status") != "success" or not data.get("download_url"):
+                    print(f"[AUDIO] API error for ID: {video_id} - {data}")
+                    return
+                    
+                download_link = f"{API_URL}{data['download_url']}"
+                
+                async with session.get(download_link) as file_response:
+                    if file_response.status != 200:
+                        print(f"[AUDIO] Download failed with status {file_response.status} for ID: {video_id}")
+                        return
+                        
+                    with open(file_path, "wb") as f:
+                        async for chunk in file_response.content.iter_chunked(8192):
+                            f.write(chunk)
+                            
+        print(f"🎵 [API] downloaded from API for ID: {video_id}")
+        return file_path
+    except Exception as e:
+        print(f"[AUDIO] Exception for ID: {video_id} - {e}")
+        return
 
-        try:
-            file_format = data.get("format", "mp3")
-            file_extension = file_format.lower()
-            file_name = f"{video_id}.{file_extension}"
-            download_folder = "downloads"
-            os.makedirs(download_folder, exist_ok=True)
-            file_path = os.path.join(download_folder, file_name)
-
-            async with session.get(download_url) as file_response:
-                with open(file_path, 'wb') as f:
-                    while True:
-                        chunk = await file_response.content.read(8192)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                return file_path
-        except aiohttp.ClientError as e:
-            print(f"Network or client error occurred while downloading: {e}")
-            return None
-        except Exception as e:
-            print(f"Error occurred while downloading song: {e}")
-            return None
-    return None
-
-async def download_video(link: str):
+# -------------------------
+# Download YouTube Video
+# -------------------------
+async def download_video(link: str) -> str:
     video_id = link.split('v=')[-1].split('&')[0]
-
-    download_folder = "downloads"
-    for ext in ["mp4", "webm", "mkv"]:
-        file_path = f"{download_folder}/{video_id}.{ext}"
-        if os.path.exists(file_path):
-            return file_path
-        
-    video_url = f"{VIDEO_API_URL}/video/{video_id}?api={API_KEY}"
-    async with aiohttp.ClientSession() as session:
-        for attempt in range(10):
-            try:
-                async with session.get(video_url) as response:
-                    if response.status != 200:
-                        raise Exception(f"API request failed with status code {response.status}")
-                
-                    data = await response.json()
-                    status = data.get("status", "").lower()
-
-                    if status == "done":
-                        download_url = data.get("link")
-                        if not download_url:
-                            raise Exception("API response did not provide a download URL.")
-                        break
-                    elif status == "downloading":
-                        await asyncio.sleep(8)
-                    else:
-                        error_msg = data.get("error") or data.get("message") or f"Unexpected status '{status}'"
-                        raise Exception(f"API error: {error_msg}")
-            except Exception as e:
-                print(f"[FAIL] {e}")
-                return None
-        else:
-            print("⏱️ Max retries reached. Still downloading...")
-            return None
+    print(f"🎥 [VIDEO] Starting download process for ID: {video_id}")
     
-
-        try:
-            file_format = data.get("format", "mp4")
-            file_extension = file_format.lower()
-            file_name = f"{video_id}.{file_extension}"
-            download_folder = "downloads"
-            os.makedirs(download_folder, exist_ok=True)
-            file_path = os.path.join(download_folder, file_name)
-
-            async with session.get(download_url) as file_response:
-                with open(file_path, 'wb') as f:
-                    while True:
-                        chunk = await file_response.content.read(8192)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                return file_path
-        except aiohttp.ClientError as e:
-            print(f"Network or client error occurred while downloading: {e}")
-            return None
-        except Exception as e:
-            print(f"Error occurred while downloading video: {e}")
-            return None
-    return None
+    if not video_id or len(video_id) < 5:
+        return
+        
+    DOWNLOAD_DIR = "downloads"
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mkv")
+    if os.path.exists(file_path):
+        print(f"🎥 [LOCAL] downloaded from LOCAL for ID: {video_id}")
+        return file_path
+        
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {"url": video_id, "type": "video"}
+            headers = {"X-API-KEY": API_KEY}
+            
+            async with session.post(f"{API_URL}/download", json=payload, headers=headers) as response:
+                if response.status == 401:
+                    print("[API] Your provided key is not valid, please use a valid one or get it from @InflexAPIBot")
+                    return
+                if response.status != 200:
+                    print(f"[VIDEO] API returned status {response.status} for ID: {video_id}")
+                    return
+                    
+                data = await response.json()
+                if data.get("status") != "success" or not data.get("download_url"):
+                    print(f"[VIDEO] API error for ID: {video_id} - {data}")
+                    return
+                    
+                download_link = f"{API_URL}{data['download_url']}"
+                
+                async with session.get(download_link) as file_response:
+                    if file_response.status != 200:
+                        print(f"[VIDEO] Download failed with status {file_response.status} for ID: {video_id}")
+                        return
+                        
+                    with open(file_path, "wb") as f:
+                        async for chunk in file_response.content.iter_chunked(8192):
+                            f.write(chunk)
+                            
+        print(f"🎥 [API] downloaded from API for ID: {video_id}")
+        return file_path
+    except Exception as e:
+        print(f"[VIDEO] Exception for ID: {video_id} - {e}")
+        return
 
 async def check_file_size(link):
     async def get_format_info(link):
