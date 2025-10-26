@@ -9,15 +9,21 @@ from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch
 from InflexMusic.utils.database import is_on_off
+from InflexMusic import app
 from InflexMusic.utils.formatters import time_to_seconds
 import os
 import glob
 import random
 import logging
+import pymongo
+from pymongo import MongoClient
 import aiohttp
 import config
-from config import API_URL, API_KEY
+import traceback
+from InflexMusic import LOGGER
 
+API_URL = "https://teaminflex.xyz"  # Change to your API server URL
+API_KEY = "INFLEX93454428D"
 
 def cookie_txt_file():
     cookie_dir = f"{os.getcwd()}/cookies"
@@ -28,7 +34,6 @@ def cookie_txt_file():
         return None
     cookie_file = os.path.join(cookie_dir, random.choice(cookies_files))
     return cookie_file
-
 
 # ==============================================
 # 🎵 AUDIO DOWNLOAD
